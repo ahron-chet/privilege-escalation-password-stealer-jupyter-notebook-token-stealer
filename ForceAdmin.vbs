@@ -7,3 +7,4 @@ WshShell.SendKeys "runas /user:administrator $path"
 WshShell.SendKeys "{ENTER}" 
 WshShell.SendKeys "$password"
 WshShell.SendKeys "{ENTER}"
+
